@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "babel --extensions \".ts\" src -d build",
+    "build": "babel --extensions \".ts\" src --out-dir lib",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -13,8 +13,21 @@
   "author": "Sebastian Jørgensen <sj@invokit.dk>",
   "license": "MIT",
   "devDependencies": {
-    "babel-cli": "^6.26.0",
-    "babel-preset-env": "^1.7.0",
-    "babel-preset-typescript": "^7.0.0-alpha.19"
+    "@babel/cli": "^7.0.0",
+    "@babel/core": "^7.0.0",
+    "@babel/preset-env": "^7.0.0",
+    "@babel/preset-typescript": "^7.0.0",
+    "@types/koa": "^2.0.46",
+    "@types/koa-router": "^7.0.31",
+    "@types/pify": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=8"
+  },
+  "dependencies": {
+    "@babel/polyfill": "^7.0.0",
+    "koa": "^2.5.2",
+    "koa-router": "^7.4.0",
+    "pify": "^4.0.0"
   }
 }
