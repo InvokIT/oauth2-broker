@@ -13,7 +13,7 @@ const randomBytes = pify(_randomBytes);
 
 const STATE_SIZE = 128;
 
-interface OAuth2AuthRequestParams {
+interface IOAuth2AuthRequestParams {
     client_id: string,
     redirect_uri: string,
     response_type: "code",
@@ -21,12 +21,12 @@ interface OAuth2AuthRequestParams {
     state: string
 };
 
-interface OAuth2AuthSuccessResponse {
+interface IOAuth2AuthSuccessResponse {
     code: string,
     state: string
 }
 
-interface OAuth2ErrorResponse {
+interface IOAuth2ErrorResponse {
     error: "invalid_request"
     | "unauthorized_client"
     | "access_denied"
@@ -39,7 +39,7 @@ interface OAuth2ErrorResponse {
     state: string
 }
 
-interface OAuth2TokenRequestParams {
+interface IOAuth2TokenRequestParams {
     client_id: string,
     client_secret: string,
     code: string,
@@ -47,23 +47,24 @@ interface OAuth2TokenRequestParams {
     redirect_uri: string
 }
 
-interface OAuth2TokenResponse {
+interface IOAuth2TokenResponse {
     access_token: string,
     expires_in?: number,
     refresh_token: string,
     token_type: "Bearer"
 }
 
-const APP_RETURN_URI = process.env.APP_RETURN_URI;
-
 const logger = bunyan.createLogger({ name: "index" });
+
+const APP_RETURN_URI = process.env.APP_RETURN_URI;
+const SECURE_COOKIES = process.env.NODE_ENV === "production";
 
 if (!APP_RETURN_URI) {
     logger.error("APP_RETURN_URI is not defined!");
     process.exit(1);
 }
 
-const isOAuth2ErrorResponse = (res: any): res is OAuth2ErrorResponse => {
+const isOAuth2ErrorResponse = (res: any): res is IOAuth2ErrorResponse => {
     return !!res.error;
 }
 
@@ -109,7 +110,7 @@ router.get("/auth/:provider", async (ctx, next) => {
 
     const state = (await randomBytes(STATE_SIZE)).toString("base64");
 
-    const requestParams: OAuth2AuthRequestParams = {
+    const requestParams: IOAuth2AuthRequestParams = {
         client_id: provider.client_id,
         redirect_uri: createRedirectUri(ctx),
         response_type: "code",
@@ -117,14 +118,14 @@ router.get("/auth/:provider", async (ctx, next) => {
         state: state
     }
 
-    ctx.cookies.set("oauth2-state", state, { secure: true });
-    ctx.cookies.set("device-id", ctx.state.deviceId);
+    ctx.cookies.set("oauth2-state", state, { secure: SECURE_COOKIES });
+    ctx.cookies.set("device-id", ctx.state.deviceId, { secure: SECURE_COOKIES });
 
     ctx.redirect(`${provider.authorization_uri}?${querystring.stringify(requestParams)}`);
 });
 
 router.get("/callback/:provider", async (ctx, next) => {
-    const oauthResponse: OAuth2AuthSuccessResponse | OAuth2ErrorResponse = ctx.query;
+    const oauthResponse: IOAuth2AuthSuccessResponse | IOAuth2ErrorResponse = ctx.query;
 
     const cookieState = ctx.cookies.get("oauth2-state");
     const deviceId = ctx.cookies.get("device-id");
@@ -137,6 +138,7 @@ router.get("/callback/:provider", async (ctx, next) => {
     const responseState = oauthResponse.state;
 
     if (cookieState !== responseState) {
+        // The expected state is wrong. Hack attack?
         logger.warn({
             device_id: deviceId,
             oauth_provider: providerName,
@@ -144,7 +146,7 @@ router.get("/callback/:provider", async (ctx, next) => {
             cookie_state: cookieState
         }, "cookieState did not match responseState.");
 
-        ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ error: "unequal_state" })}`);
+        ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ error: "invalid_request" })}`);
         return;
     } else if (isOAuth2ErrorResponse(oauthResponse)) {
         logger.warn({
@@ -153,12 +155,12 @@ router.get("/callback/:provider", async (ctx, next) => {
             oauth_response: oauthResponse
         }, "OAuth2 provider returned an error.");
 
-        ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ error: oauthResponse.error })}`);
+        ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ provider: providerName, error: oauthResponse.error })}`);
         return;
     } else {
         const authCode = oauthResponse.code;
         const provider: oauth2Providers.OAuth2ProviderConfig = ctx.state.provider;
-        const tokenRequestParams: OAuth2TokenRequestParams = {
+        const tokenRequestParams: IOAuth2TokenRequestParams = {
             client_id: provider.client_id,
             code: authCode,
             client_secret: provider.client_secret,
@@ -175,15 +177,16 @@ router.get("/callback/:provider", async (ctx, next) => {
             method: "POST"
         });
 
-        const resBody: OAuth2TokenResponse | OAuth2ErrorResponse = await res.json();
+        const resBody: IOAuth2TokenResponse | IOAuth2ErrorResponse = await res.json();
 
         if (res.ok) {
-            const { access_token, expires_in, refresh_token } = (resBody as OAuth2TokenResponse);
+            const { access_token, expires_in, refresh_token } = (resBody as IOAuth2TokenResponse);
             // TODO Save tokens and redirect client
             // tokenStorage.save({ provider: providerName, device: deviceId, refreshToken: refresh_token });
-            ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ provider: provider, access_token: access_token })}`);
+            ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ provider: providerName, access_token, expires_in })}`);
+            return;
         } else {
-            const errorCode = (resBody as OAuth2ErrorResponse).error;
+            const errorCode = (resBody as IOAuth2ErrorResponse).error;
             logger.warn({
                 device_id: deviceId,
                 oauth_provider: providerName,
@@ -191,7 +194,7 @@ router.get("/callback/:provider", async (ctx, next) => {
                 oauth_token_response_error: errorCode
             }, "OAuth2 token request failed.");
 
-            ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ provider: provider, error: errorCode })}`);
+            ctx.redirect(`${APP_RETURN_URI}#${querystring.stringify({ provider: providerName, error: errorCode })}`);
             return;
         }
     }
