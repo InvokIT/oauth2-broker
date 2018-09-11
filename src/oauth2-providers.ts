@@ -1,3 +1,7 @@
+import bunyan from "bunyan";
+
+const logger = bunyan.createLogger({ name: "oauth2-providers" });
+
 export interface OAuth2ProviderConfig {
     authorization_uri: string,
     client_id: string,
@@ -20,6 +24,12 @@ export const dropbox: OAuth2ProviderConfig = {
     token_uri: "https://api.dropboxapi.com/oauth2/token"
 };
 
+if (!dropbox.client_id || !dropbox.client_secret) {
+    logger.error({
+        client_id: dropbox.client_id, client_secret: !!dropbox.client_secret
+    }, "Missing dropbox client_id or client_secret. Dropbox auth will likely not work!");
+}
+
 export const google: OAuth2ProviderConfig = {
     access_type: "offline",
     authorization_uri: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -31,3 +41,9 @@ export const google: OAuth2ProviderConfig = {
     scope: "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/photoslibrary.readonly",
     token_uri: "https://www.googleapis.com/oauth2/v4/token"
 };
+
+if (!google.client_id || !google.client_secret) {
+    logger.error({
+        client_id: google.client_id, client_secret: !!google.client_secret
+    }, "Missing google client_id or client_secret. Google auth will likely not work!");
+}
