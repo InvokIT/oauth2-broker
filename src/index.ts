@@ -32,7 +32,7 @@ interface IOAuth2ErrorResponse {
     | "temporarily_unavailable",
     error_description?: string,
     error_uri?: string,
-    state: string
+    state?: string
 }
 
 interface IOAuth2TokenRequestParams {
@@ -222,7 +222,10 @@ router.get("/token/:provider", async (ctx, next) => {
     if (tokens) {
         if (tokens.expires_at > Date.now()) {
             // If the access_token is still valid, just return that
-            ctx.response.body = { access_token: tokens.access_token, expires_in: tokens.expires_at - (Date.now() / 1000) };
+            ctx.response.body = {
+                access_token: tokens.access_token,
+                expires_in: tokens.expires_at - (Date.now() / 1000)
+            };
         } else if (tokens.refresh_token) {
             // Try to request a new access token
             const res = await fetch(provider.token_uri, {
@@ -247,17 +250,25 @@ router.get("/token/:provider", async (ctx, next) => {
                 await tokenStorage.save(device_id, providerName, {
                     access_token,
                     expires_at: expires_in ? (Date.now() / 1000) - 5 + parseInt(expires_in) : null,
-                    refresh_token
+                    refresh_token: refresh_token || tokens.refresh_token
                 });
 
                 ctx.response.body = { access_token, expires_in };
             } else {
-                // TODO Provider denied refreshing the tokens
+                // Provider denied refreshing the tokens
+                const { error, error_description, error_uri } = (resBody as IOAuth2ErrorResponse);
+                logger.info({ device_id, provider: providerName, error, error_description, error_uri }, "Refresh of tokens was denied by the authorization agent.");
+
+                await tokenStorage.delete(device_id, providerName);
+
+                ctx.response.body = { error, error_description };
             }
         } else {
-            // We can't request a new token, the user has to authorize again
+            // Our access_token is expired and we don't have a refresh_token
+            ctx.response.body = { error: "unauthorized_client" };
         }
     } else {
+        // We don't know of any access_token or refresh_token
         ctx.response.body = { error: "unauthorized_client" };
     }
 });
