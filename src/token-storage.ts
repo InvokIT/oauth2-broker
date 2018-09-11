@@ -11,7 +11,11 @@ export interface ITokenStorage {
 }
 
 export class MemoryTokenStorage implements ITokenStorage {
-    private readonly tokens: { [device_id: string]: null | { [provider: string]: null | ITokens } } = {};
+    private readonly tokens: { [device_id: string]: null | { [provider: string]: null | ITokens } };
+
+    constructor() {
+        this.tokens = {};
+    }
 
     async load(deviceId: string, provider: string): Promise<ITokens> {
         const deviceTokens = this.tokens[deviceId];
