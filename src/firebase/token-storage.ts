@@ -1,4 +1,4 @@
-import app from "./firebase-app";
+import firebaseApp from "./firebase-app";
 import { ITokens, ITokenStorage } from "../token-storage";
 
 interface FirestoreTokens {
@@ -17,7 +17,7 @@ export default class FirestoreTokenStorage implements ITokenStorage {
     }
 
     private collection() {
-        return app.firestore().collection(this.collectionName);
+        return firebaseApp.firestore().collection(this.collectionName);
     }
 
     async load(deviceId: string, provider: string): Promise<ITokens | null> {
