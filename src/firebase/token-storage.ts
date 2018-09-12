@@ -1,3 +1,4 @@
+import firebase from "./firebase-app";
 import { ITokens, ITokenStorage } from "../token-storage";
 
 export default class FirestoreTokenStorage implements ITokenStorage {
