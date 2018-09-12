@@ -24,8 +24,7 @@
     "@types/koa-router": "^7.0.31",
     "@types/node-fetch": "^2.1.2",
     "@types/pify": "^3.0.2",
-    "@types/uuid": "^3.4.4",
-    "http-status": "^1.2.0"
+    "@types/uuid": "^3.4.4"
   },
   "engines": {
     "node": ">=8"
@@ -33,6 +32,8 @@
   "dependencies": {
     "@babel/polyfill": "^7.0.0",
     "bunyan": "^1.8.12",
+    "firebase-admin": "^6.0.0",
+    "http-status": "^1.2.0",
     "koa": "^2.5.2",
     "koa-bunyan-logger": "^2.0.0",
     "koa-router": "^7.4.0",

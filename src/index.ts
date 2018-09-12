@@ -7,7 +7,7 @@ import Router from "koa-router";
 import querystring from "querystring";
 import uuidv5 from "uuid/v5";
 import * as oauth2Providers from "./oauth2-providers";
-import { MemoryTokenStorage } from "./token-storage";
+import FirebaseTokenStorage from "./firebase/token-storage";
 
 interface IOAuth2AuthRequestParams {
     client_id: string,
@@ -61,21 +61,21 @@ const logger = bunyan.createLogger({ name: "index" });
 
 const APP_RETURN_URI = process.env.APP_RETURN_URI;
 const SECURE_COOKIES = process.env.NODE_ENV === "production";
+const UUID_NAMESPACE = process.env.UUID_NAMESPACE;
+const FIRESTORE_TOKEN_COLLECTION = process.env.FIRESTORE_TOKEN_COLLECTION;
 
 if (!APP_RETURN_URI) {
     logger.error("APP_RETURN_URI is not defined!");
     process.exit(1);
 }
 
-const APP_UUID = "d03c5a79-6162-45e2-a5d0-a3f8e105c9ec";
-
-const createOAuth2State = (deviceId: string) => uuidv5(deviceId, APP_UUID, Buffer.alloc(16)).toString("base64");
+const createOAuth2State = (deviceId: string) => uuidv5(deviceId, UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
 
 const isOAuth2ErrorResponse = (res: any): res is IOAuth2ErrorResponse => {
     return !!res.error;
 }
 
-const tokenStorage = new MemoryTokenStorage();
+const tokenStorage = new FirebaseTokenStorage(FIRESTORE_TOKEN_COLLECTION);
 
 const app = new Koa();
 app.proxy = true;
