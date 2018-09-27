@@ -1,11 +1,12 @@
 import bunyan from "bunyan";
-import express, { Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import expressBunyanLogger from "express-bunyan-logger";
+import boom from "boom";
 import httpStatus from "http-status";
 import uuidv5 from "uuid/v5";
 import querystring from "querystring";
 import moment from "moment";
-import { default as fetch, Response as FetchResponse } from "node-fetch";
+import fetch, { Response as FetchResponse } from "node-fetch";
 import firebaseApp from "../firebase";
 import {
     OAuth2ProviderConfig,
@@ -174,16 +175,12 @@ app.use((req, res, next) => {
     const device_id: string = req.cookies["device_id"] || req.headers["x-device-id"];
 
     if (!device_id) {
-        log.warn({ req }, "device_id not found in request.");
-        res.sendStatus(httpStatus.BAD_REQUEST);
-        return;
+        next(boom.badRequest("device_id not defined."))
+    } else {
+        log.debug({ device_id, req }, "device_id read from request.");
+        req["device_id"] = device_id;
+        next();
     }
-
-    log.debug({ device_id, req }, "device_id read from request.");
-
-    req["device_id"] = device_id;
-
-    next();
 });
 
 app.use((req, res, next) => {
@@ -191,9 +188,7 @@ app.use((req, res, next) => {
     const oauth2_state = uuidv5(device_id, OAUTH2_STATE_UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
 
     log.debug({ oauth2_state, device_id, req }, "Generated oauth2 state string for device.");
-
     req["oauth2_state"] = oauth2_state;
-
     next();
 });
 
@@ -201,16 +196,25 @@ app.param("provider", (req, res, next, providerName) => {
     const provider: OAuth2ProviderConfig = providers[providerName];
 
     if (!provider) {
-        log.warn({ req, providerName }, "Provider not found.")
-        res.sendStatus(httpStatus.NOT_FOUND);
-        return;
+        next(boom.notFound("Unknown provider."));
+    } else {
+        log.debug({ providerName, req }, "providerName read from request and validated.");
+        req["provider"] = provider;
+        next();
+    }
+});
+
+// Error handler
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    boom.boomify(err);
+
+    if (err.isServer) {
+        log.error({ req, err }, "Request caused an error.");
+    } else {
+        log.warn({ req, err }, "Request caused an error.")
     }
 
-    log.debug({ providerName, req }, "providerName read from request and validated.");
-
-    req["provider"] = provider;
-
-    next();
+    res.status(err.output.statusCode).json(err.output.payload);
 });
 
 
@@ -242,61 +246,85 @@ app.get(":/provider/callback", async (req, res) => {
 
     res.clearCookie("device_id", cookieOptions());
 
-    if (oauth2_response.state !== oauth2_state) {
-        // The expected state is wrong. Hack attack?
-        log.warn({
-            device_id,
-            providerName,
-            req,
-            oauth2_state,
-            oauth2_response
-        }, "oauth2_response.state was not expected value.");
+    let responseParams = null;
 
-        res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify({ provider: providerName, error: "invalid_request" })}`);
-    } else if (isOAuth2ErrorResponse(oauth2_response)) {
-        log.warn({
-            device_id,
-            providerName,
-            req,
-            oauth2_response
-        }, "OAuth2 provider returned an error.");
-
-        res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify({ provider: providerName, error: oauth2_response.error })}`);
-    } else {
-        const authCode = oauth2_response.code;
-        const tokenRes = await fetchTokensFromProvider(provider, authCode, createRedirectUri(req));
-
-        if (isOAuth2ErrorResponse(tokenRes)) {
+    try {
+        if (oauth2_response.state !== oauth2_state) {
+            // The expected state is wrong. Hack attack?
             log.warn({
                 device_id,
-                provider: providerName,
-                ...tokenRes
-            }, "Received error when exchanging auth code for tokens.");
-            res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify({ provider: providerName, error: tokenRes.error })}`);
-        } else {
-            // Save the tokens
-            await saveTokens(device_id, providerName, {
-                access_token: tokenRes.access_token,
-                expires_in: tokenRes.expires_in || null,
-                refresh_token: tokenRes.refresh_token
-            });
+                providerName,
+                req,
+                oauth2_state,
+                oauth2_response
+            }, "oauth2_response.state was not expected value.");
 
-            log.info({
+            throw new Error("invalid_request");
+        } else if (isOAuth2ErrorResponse(oauth2_response)) {
+            log.warn({
                 device_id,
-                provider: providerName,
-                access_token: !!tokenRes.access_token,
-                expires_in: tokenRes.expires_in,
-                refresh_token: !!tokenRes.refresh_token
-            }, "Exchanged auth code for tokens.");
+                providerName,
+                req,
+                oauth2_response
+            }, "OAuth2 provider returned an error.");
 
-            // Return the tokens
-            res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify({
-                provider: providerName,
-                access_token: tokenRes.access_token,
-                expires_in: tokenRes.expires_in
-            })}`);
+            throw new Error(oauth2_response.error);
+        } else {
+            const authCode = oauth2_response.code;
+            const tokenRes = await fetchTokensFromProvider(provider, authCode, createRedirectUri(req));
+
+            if (isOAuth2ErrorResponse(tokenRes)) {
+                log.warn({
+                    device_id,
+                    provider: providerName,
+                    ...tokenRes
+                }, "Received error when exchanging auth code for tokens.");
+
+                throw new Error(tokenRes.error);
+            } else {
+                // Save the tokens
+                try {
+                    await saveTokens(device_id, providerName, {
+                        access_token: tokenRes.access_token,
+                        expires_in: tokenRes.expires_in || null,
+                        refresh_token: tokenRes.refresh_token
+                    });
+
+                    log.info({
+                        device_id,
+                        provider: providerName,
+                        access_token: !!tokenRes.access_token,
+                        expires_in: tokenRes.expires_in,
+                        refresh_token: !!tokenRes.refresh_token
+                    }, "Exchanged auth code for tokens.");
+
+                    // Return the tokens
+                    responseParams = {
+                        provider: providerName,
+                        access_token: tokenRes.access_token,
+                        expires_in: tokenRes.expires_in
+                    };
+                } catch (err) {
+                    log.error({
+                        device_id,
+                        provider: providerName,
+                        ...tokenRes,
+                        err
+                    }, "Error saving tokens!");
+
+                    throw new Error("server_error");
+                }
+            }
         }
+
+        res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify(responseParams)}`);
+    } catch (err) {
+        res.redirect(`${OAUTH2_RETURN_URI}#${querystring.stringify({
+            provider: providerName,
+            error: err.message
+        })}`);
     }
+
 });
 
 app.get(":/provider/tokens", async (req, res) => {
@@ -324,8 +352,8 @@ app.get(":/provider/tokens", async (req, res) => {
             }, "Received an error when refreshing tokens.");
 
             await deleteTokens(device_id, providerName);
-            // TODO http error
-            res.json({ error: tokenRes.error });
+
+            throw boom.badGateway(tokenRes.error);
         } else {
             tokens = {
                 access_token: tokenRes.access_token,
@@ -351,7 +379,7 @@ app.get(":/provider/tokens", async (req, res) => {
     } else if (tokenExpired) {
         // Token is expired and we have no refresh token :(
         await deleteTokens(device_id, providerName);
-        res.sendStatus(httpStatus.NOT_FOUND);
+        throw boom.notFound();
     } else {
         res.json({
             access_token: tokens.access_token,
