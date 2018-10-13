@@ -1,7 +1,7 @@
-import bunyan from "bunyan";
+import { createLogger } from "bunyan";
 import { OAuth2ProviderConfig } from "./types";
 
-const logger = bunyan.createLogger({ name: "oauth2-providers" });
+const logger = createLogger({ name: "oauth2-providers" });
 
 
 export const dropbox: OAuth2ProviderConfig = {

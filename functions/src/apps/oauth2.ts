@@ -1,11 +1,12 @@
-import bunyan from "bunyan";
-import express, { Request, Response, NextFunction } from "express";
-import expressBunyanLogger from "express-bunyan-logger";
-import boom from "boom";
-import httpStatus from "http-status";
-import uuidv5 from "uuid/v5";
-import querystring from "querystring";
-import moment from "moment";
+import { createLogger } from "bunyan";
+import express = require("express");
+import { Request, Response, NextFunction } from "express";
+import expressBunyanLogger = require("express-bunyan-logger");
+import * as boom from "boom";
+import * as httpStatus from "http-status";
+import uuidv5 = require("uuid/v5");
+import * as querystring from "querystring";
+import moment = require("moment");
 import fetch, { Response as FetchResponse } from "node-fetch";
 import firebaseApp from "../firebase";
 import {
@@ -19,7 +20,7 @@ import {
 } from "../types";
 import * as providers from "../oauth2-providers";
 
-const log = bunyan.createLogger({ name: "oauth2" });
+const log = createLogger({ name: "oauth2" });
 
 const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
 const OAUTH2_STATE_UUID_NAMESPACE = process.env.OAUTH2_STATE_NAMESPACE;
@@ -28,17 +29,17 @@ const SECURE_COOKIES = process.env.NODE_ENV === "production";
 
 if (!OAUTH2_RETURN_URI) {
     log.fatal("OAUTH2_RETURN_URI is not defined!");
-    process.exit(1);
+    // process.exit(1);
 }
 
 if (!OAUTH2_STATE_UUID_NAMESPACE) {
     log.fatal("OAUTH2_STATE_UUID_NAMESPACE is not defined! This is a security risk!");
-    process.exit(1);
+    // process.exit(1);
 }
 
 if (!OAUTH2_FIRESTORE_COLLECTION) {
     log.fatal("OAUTH2_FIRESTORE_COLLECTION is not defined!");
-    process.exit(1);
+    // process.exit(1);
 }
 
 
@@ -171,6 +172,7 @@ const app = express();
 app.set("trust proxy", true);
 app.use(expressBunyanLogger());
 
+// Middleware to read the device_id from the request and set it on the request object.
 app.use((req, res, next) => {
     const device_id: string = req.cookies["device_id"] || req.headers["x-device-id"];
 
@@ -183,6 +185,7 @@ app.use((req, res, next) => {
     }
 });
 
+// Middleware to calculate and set the oauth2 state for a device_id on the request
 app.use((req, res, next) => {
     const device_id: string = req["device_id"];
     const oauth2_state = uuidv5(device_id, OAUTH2_STATE_UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
@@ -192,6 +195,7 @@ app.use((req, res, next) => {
     next();
 });
 
+// Middleware to parse the provider param and inject it on the request
 app.param("provider", (req, res, next, providerName) => {
     const provider: OAuth2ProviderConfig = providers[providerName];
 
@@ -218,6 +222,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 
+// Redirect the client to the provider's oauth2 screen
 app.get("/:provider/auth", (req, res) => {
     const device_id = req["device_id"];
     const provider = req["provider"];
@@ -231,12 +236,14 @@ app.get("/:provider/auth", (req, res) => {
         state: oauth2_state
     };
 
+    // Store the device_id in a cookie so the callback handler will know about it.
     res.cookie("device_id", device_id, cookieOptions());
 
     res.redirect(`${provider.authorization_uri}?${querystring.stringify(requestParams)}`);
 });
 
 
+// Handle the callback from a provider's oauth2 screen
 app.get(":/provider/callback", async (req, res) => {
     const device_id = req["device_id"];
     const provider = req["provider"];

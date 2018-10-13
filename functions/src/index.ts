@@ -1,5 +1,4 @@
 import * as functions from 'firebase-functions';
-import express from "express";
 import * as apps from "./apps";
 
 // // Start writing Firebase Functions

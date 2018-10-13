@@ -1,6 +1,6 @@
-import firebase from "firebase-admin";
+import { initializeApp }from "firebase-admin";
 
 // Use default credentials
-const app = firebase.initializeApp();
+const app = initializeApp();
 
 export default app;
