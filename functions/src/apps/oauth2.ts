@@ -29,17 +29,17 @@ const SECURE_COOKIES = process.env.NODE_ENV === "production";
 
 if (!OAUTH2_RETURN_URI) {
     log.fatal("OAUTH2_RETURN_URI is not defined!");
-    // process.exit(1);
+    throw new Error("OAUTH2_RETURN_URI is not defined!");
 }
 
 if (!OAUTH2_STATE_UUID_NAMESPACE) {
-    log.fatal("OAUTH2_STATE_UUID_NAMESPACE is not defined! This is a security risk!");
-    // process.exit(1);
+    log.fatal("OAUTH2_STATE_UUID_NAMESPACE is not defined!");
+    throw new Error("OAUTH2_STATE_UUID_NAMESPACE is not defined!");
 }
 
 if (!OAUTH2_FIRESTORE_COLLECTION) {
     log.fatal("OAUTH2_FIRESTORE_COLLECTION is not defined!");
-    // process.exit(1);
+    throw new Error("OAUTH2_FIRESTORE_COLLECTION is not defined!");
 }
 
 
