@@ -1,4 +1,5 @@
 import { createLogger } from "bunyan";
+import { config } from "firebase-functions";
 import { OAuth2ProviderConfig } from "./types";
 
 const logger = createLogger({ name: "oauth2-providers" });
@@ -6,8 +7,10 @@ const logger = createLogger({ name: "oauth2-providers" });
 
 export const dropbox: OAuth2ProviderConfig = {
     authorization_uri: "https://www.dropbox.com/oauth2/authorize",
-    client_id: process.env.DROPBOX_CLIENT_ID,
-    client_secret: process.env.DROPBOX_CLIENT_SECRET,
+    // client_id: process.env.DROPBOX_CLIENT_ID,
+    // client_secret: process.env.DROPBOX_CLIENT_SECRET,
+    client_id: config().oauth2.providers.dropbox.client_id,
+    client_secret: config().oauth2.providers.dropbox.client_secret,
     force_reapprove: "true",
     // user_uri: "https://api.dropboxapi.com/2/users/get_current_account",
     revoke_uri: "https://api.dropboxapi.com/2/auth/token/revoke",
@@ -25,8 +28,10 @@ if (!dropbox.client_id || !dropbox.client_secret) {
 export const google: OAuth2ProviderConfig = {
     access_type: "offline",
     authorization_uri: "https://accounts.google.com/o/oauth2/v2/auth",
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    // client_id: process.env.GOOGLE_CLIENT_ID,
+    // client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    client_id: config().oauth2.providers.google.client_id,
+    client_secret: config().oauth2.providers.google.client_secret,
     prompt: "select_account",
     // user_uri: "",
     revoke_uri: "https://accounts.google.com/o/oauth2/revoke",

@@ -8,6 +8,7 @@ import uuidv5 = require("uuid/v5");
 import * as querystring from "querystring";
 import moment = require("moment");
 import fetch, { Response as FetchResponse } from "node-fetch";
+import * as functions from "firebase-functions";
 import firebaseApp from "../firebase";
 import {
     OAuth2ProviderConfig,
@@ -22,9 +23,13 @@ import * as providers from "../oauth2-providers";
 
 const log = createLogger({ name: "oauth2" });
 
-const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
-const OAUTH2_STATE_UUID_NAMESPACE = process.env.OAUTH2_STATE_NAMESPACE;
-const OAUTH2_FIRESTORE_COLLECTION = process.env.OAUTH2_FIRESTORE_COLLECTION;
+// Where to redirect the browser after a successful oauth2 authentication
+// const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
+// const OAUTH2_STATE_UUID_NAMESPACE = process.env.OAUTH2_STATE_NAMESPACE;
+// const OAUTH2_FIRESTORE_COLLECTION = process.env.OAUTH2_FIRESTORE_COLLECTION;
+const OAUTH2_RETURN_URI = functions.config().oauth2.return_uri;
+const OAUTH2_STATE_UUID_NAMESPACE = functions.config().oauth2.state.uuid_namespace;
+const OAUTH2_FIRESTORE_COLLECTION = functions.config().oauth2.firestore.collections.tokens;
 const SECURE_COOKIES = process.env.NODE_ENV === "production";
 
 if (!OAUTH2_RETURN_URI) {
