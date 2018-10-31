@@ -9,6 +9,7 @@ import uuidv5 = require("uuid/v5");
 import * as querystring from "querystring";
 import moment = require("moment");
 import fetch, { Response as FetchResponse } from "node-fetch";
+import * as functions from "firebase-functions";
 import firebaseApp from "../firebase";
 import {
     OAuth2ProviderConfig,
@@ -23,24 +24,28 @@ import * as providers from "../oauth2-providers";
 
 const log = createLogger({ name: "oauth2" });
 
-const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
-const OAUTH2_STATE_UUID_NAMESPACE = process.env.OAUTH2_STATE_NAMESPACE;
-const OAUTH2_FIRESTORE_COLLECTION = process.env.OAUTH2_FIRESTORE_COLLECTION;
+// Where to redirect the browser after a successful oauth2 authentication
+// const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
+// const OAUTH2_STATE_UUID_NAMESPACE = process.env.OAUTH2_STATE_NAMESPACE;
+// const OAUTH2_FIRESTORE_COLLECTION = process.env.OAUTH2_FIRESTORE_COLLECTION;
+const OAUTH2_RETURN_URI = functions.config().oauth2.return_uri;
+const OAUTH2_STATE_UUID_NAMESPACE = functions.config().oauth2.state.uuid_namespace;
+const OAUTH2_FIRESTORE_COLLECTION = functions.config().oauth2.firestore.collections.tokens;
 const SECURE_COOKIES = process.env.NODE_ENV === "production";
 
 if (!OAUTH2_RETURN_URI) {
     log.fatal("OAUTH2_RETURN_URI is not defined!");
-    // process.exit(1);
+    throw new Error("OAUTH2_RETURN_URI is not defined!");
 }
 
 if (!OAUTH2_STATE_UUID_NAMESPACE) {
-    log.fatal("OAUTH2_STATE_UUID_NAMESPACE is not defined! This is a security risk!");
-    // process.exit(1);
+    log.fatal("OAUTH2_STATE_UUID_NAMESPACE is not defined!");
+    throw new Error("OAUTH2_STATE_UUID_NAMESPACE is not defined!");
 }
 
 if (!OAUTH2_FIRESTORE_COLLECTION) {
     log.fatal("OAUTH2_FIRESTORE_COLLECTION is not defined!");
-    // process.exit(1);
+    throw new Error("OAUTH2_FIRESTORE_COLLECTION is not defined!");
 }
 
 
