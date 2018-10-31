@@ -1,4 +1,4 @@
-import { createLogger } from "bunyan";
+import Logger = require("bunyan");
 import express = require("express");
 import { Request, Response, NextFunction } from "express";
 import bunyanRequest = require("bunyan-request");
@@ -22,7 +22,7 @@ import {
 } from "../types";
 import * as providers from "../oauth2-providers";
 
-const log = createLogger({ name: "oauth2" });
+const log = Logger.createLogger({ name: "oauth2" });
 
 // Where to redirect the browser after a successful oauth2 authentication
 // const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
@@ -180,6 +180,14 @@ app.use(bunyanRequest({
     logger: log
 }));
 app.use(cookieParser());
+
+declare global {
+    namespace Express {
+        interface Request {
+            log: Logger
+        }
+    }
+}  
 
 // Middleware to read the device_id from the request and set it on the request object.
 app.use((req, res, next) => {
