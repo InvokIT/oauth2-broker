@@ -1,8 +1,9 @@
 import { createLogger } from "bunyan";
 import express = require("express");
 import { Request, Response, NextFunction } from "express";
-import expressBunyanLogger = require("express-bunyan-logger");
+import bunyanRequest = require("bunyan-request");
 import * as boom from "boom";
+import cookieParser = require("cookie-parser");
 import * as httpStatus from "http-status";
 import uuidv5 = require("uuid/v5");
 import * as querystring from "querystring";
@@ -170,16 +171,22 @@ const deleteTokens = async (device_id: string, providerName: string) => {
 
 const app = express();
 app.set("trust proxy", true);
-app.use(expressBunyanLogger());
+app.use(bunyanRequest({
+    logger: log
+}));
+app.use(cookieParser());
 
 // Middleware to read the device_id from the request and set it on the request object.
 app.use((req, res, next) => {
+    req.log.debug({ }, "Reading device_id from request.");
+
     const device_id: string = req.cookies["device_id"] || req.headers["x-device-id"];
 
     if (!device_id) {
+        req.log.debug({ req }, "Request did not contain a device_id.");
         next(boom.badRequest("device_id not defined."))
     } else {
-        log.debug({ device_id, req }, "device_id read from request.");
+        req.log.debug({ device_id, req }, "device_id read from request.");
         req["device_id"] = device_id;
         next();
     }
@@ -190,7 +197,7 @@ app.use((req, res, next) => {
     const device_id: string = req["device_id"];
     const oauth2_state = uuidv5(device_id, OAUTH2_STATE_UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
 
-    log.debug({ oauth2_state, device_id, req }, "Generated oauth2 state string for device.");
+    req.log.debug({ oauth2_state, device_id, req }, "Generated oauth2 state string for device.");
     req["oauth2_state"] = oauth2_state;
     next();
 });
@@ -202,7 +209,7 @@ app.param("provider", (req, res, next, providerName) => {
     if (!provider) {
         next(boom.notFound("Unknown provider."));
     } else {
-        log.debug({ providerName, req }, "providerName read from request and validated.");
+        req.log.debug({ providerName, req }, "providerName read from request and validated.");
         req["provider"] = provider;
         next();
     }
@@ -213,9 +220,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     boom.boomify(err);
 
     if (err.isServer) {
-        log.error({ req, err }, "Request caused an error.");
+        req.log.error({ req, err, stack: err.stack }, "Request caused an error.");
     } else {
-        log.warn({ req, err }, "Request caused an error.")
+        req.log.warn({ req, err }, "Request caused an error.")
     }
 
     res.status(err.output.statusCode).json(err.output.payload);
@@ -258,7 +265,7 @@ app.get(":/provider/callback", async (req, res) => {
     try {
         if (oauth2_response.state !== oauth2_state) {
             // The expected state is wrong. Hack attack?
-            log.warn({
+            req.log.warn({
                 device_id,
                 providerName,
                 req,
@@ -268,7 +275,7 @@ app.get(":/provider/callback", async (req, res) => {
 
             throw new Error("invalid_request");
         } else if (isOAuth2ErrorResponse(oauth2_response)) {
-            log.warn({
+            req.log.warn({
                 device_id,
                 providerName,
                 req,
@@ -281,7 +288,7 @@ app.get(":/provider/callback", async (req, res) => {
             const tokenRes = await fetchTokensFromProvider(provider, authCode, createRedirectUri(req));
 
             if (isOAuth2ErrorResponse(tokenRes)) {
-                log.warn({
+                req.log.warn({
                     device_id,
                     provider: providerName,
                     ...tokenRes
@@ -297,7 +304,7 @@ app.get(":/provider/callback", async (req, res) => {
                         refresh_token: tokenRes.refresh_token
                     });
 
-                    log.info({
+                    req.log.info({
                         device_id,
                         provider: providerName,
                         access_token: !!tokenRes.access_token,
@@ -312,7 +319,7 @@ app.get(":/provider/callback", async (req, res) => {
                         expires_in: tokenRes.expires_in
                     };
                 } catch (err) {
-                    log.error({
+                    req.log.error({
                         device_id,
                         provider: providerName,
                         ...tokenRes,
@@ -348,11 +355,11 @@ app.get(":/provider/tokens", async (req, res) => {
         res.sendStatus(httpStatus.NOT_FOUND);
     } else if (tokens.refresh_token && tokenExpired) {
         // Token expires soon but we have a refresh token!
-        log.info({ device_id, provider: providerName }, "Refreshing tokens.");
+        req.log.info({ device_id, provider: providerName }, "Refreshing tokens.");
         const tokenRes = await refreshTokensFromProvider(provider, tokens.refresh_token);
 
         if (isOAuth2ErrorResponse(tokenRes)) {
-            log.warn({
+            req.log.warn({
                 device_id,
                 provider: providerName,
                 ...tokenRes
@@ -370,7 +377,7 @@ app.get(":/provider/tokens", async (req, res) => {
 
             await saveTokens(device_id, providerName, tokens);
 
-            log.info({
+            req.log.info({
                 device_id,
                 provider: providerName,
                 access_token: !!tokens.access_token,
