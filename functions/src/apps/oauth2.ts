@@ -22,7 +22,10 @@ import {
 } from "../types";
 import * as providers from "../oauth2-providers";
 
-const log = Logger.createLogger({ name: "oauth2" });
+const log = Logger.createLogger({
+    name: "oauth2",
+    level: 0 // Output everything!!
+});
 
 // Where to redirect the browser after a successful oauth2 authentication
 // const OAUTH2_RETURN_URI = process.env.OAUTH2_RETURN_URI;
@@ -49,7 +52,7 @@ if (!OAUTH2_FIRESTORE_COLLECTION) {
 }
 
 
-const createRedirectUri = (req: express.Request) => `${req.protocol}://${req.hostname}/oauth2/${req.params["provider"]}/callback`;
+const createRedirectUri = (req: express.Request) => `${req.protocol}://${req.hostname}/oauth2/${req["providerName"]}/callback`;
 
 
 const cookieOptions = (): express.CookieOptions => ({
@@ -181,51 +184,51 @@ app.use(bunyanRequest({
 }));
 app.use(cookieParser());
 
-declare global {
-    namespace Express {
-        interface Request {
-            log: Logger
-        }
-    }
-}  
-
 // Middleware to read the device_id from the request and set it on the request object.
 app.use((req, res, next) => {
-    req.log.debug({ }, "Reading device_id from request.");
+    req.log.trace({ }, "Reading device_id from request.");
 
     const device_id: string = req.cookies["device_id"] || req.headers["x-device-id"];
 
-    if (!device_id) {
-        req.log.debug({ req }, "Request did not contain a device_id.");
-        next(boom.badRequest("device_id not defined."))
-    } else {
+    if (device_id) {
         req.log.debug({ device_id, req }, "device_id read from request.");
         req["device_id"] = device_id;
         next();
+    } else {
+        req.log.debug({ req }, "Request did not contain a device_id.");
+        next(boom.badRequest("device_id not defined."))
+    }
+});
+
+// Middleware to parse the provider param and inject it on the request object
+app.param("provider", (req, res, next, providerName) => {
+    if (providerName in providers) {
+        req.log.debug({ providerName }, "providerName read from request and validated.");
+        req["provider"] = providers[providerName];
+        next();
+    } else {
+        next(boom.notFound("Unknown provider."));
     }
 });
 
 // Middleware to calculate and set the oauth2 state for a device_id on the request
-app.use((req, res, next) => {
+app.use("/:provider", (req, res, next) => {
     const device_id: string = req["device_id"];
-    const oauth2_state = uuidv5(device_id, OAUTH2_STATE_UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
+    const providerName: string = req.params["provider"];
 
-    req.log.debug({ oauth2_state, device_id, req }, "Generated oauth2 state string for device.");
+    if (!device_id) {
+        throw new Error("device_id cannot be null.");
+    }
+
+    if (!providerName) {
+        throw new Error("providerName cannot be null.");
+    }
+
+    const oauth2_state = uuidv5(`${device_id}:${providerName}`, OAUTH2_STATE_UUID_NAMESPACE, Buffer.alloc(16)).toString("base64");
+
+    req.log.debug({ oauth2_state, device_id, providerName, req }, "Generated oauth2 state string for device and providerName combination.");
     req["oauth2_state"] = oauth2_state;
     next();
-});
-
-// Middleware to parse the provider param and inject it on the request
-app.param("provider", (req, res, next, providerName) => {
-    const provider: OAuth2ProviderConfig = providers[providerName];
-
-    if (!provider) {
-        next(boom.notFound("Unknown provider."));
-    } else {
-        req.log.debug({ providerName, req }, "providerName read from request and validated.");
-        req["provider"] = provider;
-        next();
-    }
 });
 
 // Error handler
@@ -266,8 +269,8 @@ app.get("/:provider/auth", (req, res) => {
 // Handle the callback from a provider's oauth2 screen
 app.get(":/provider/callback", async (req, res) => {
     const device_id = req["device_id"];
-    const provider = req["provider"];
     const providerName = req.params["provider"];
+    const provider = req["provider"];
     const oauth2_state = req["oauth2_state"];
     const oauth2_response: OAuth2AuthSuccessResponse | OAuth2ErrorResponse = req.query;
 
@@ -356,8 +359,8 @@ app.get(":/provider/callback", async (req, res) => {
 
 app.get(":/provider/tokens", async (req, res) => {
     const device_id = req["device_id"];
-    const provider = req["provider"];
     const providerName = req.params["provider"];
+    const provider = req["provider"];
 
     let tokens = await loadTokens(device_id, providerName);
 
